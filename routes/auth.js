@@ -24,7 +24,7 @@ router.post("/Register", async (req, res, next) => {
     if (users.find((x) => x.username === user_details.username))
       throw { status: 409, message: "Username taken" };
 
-    // add the new username
+    // add the new username /// bcrypt כדי לאבטח את הסיסמה ולעשות עליה hasing
     let hash_password = bcrypt.hashSync(
       user_details.password,
       parseInt(process.env.bcrypt_saltRounds)
@@ -58,7 +58,7 @@ router.post("/Login", async (req, res, next) => {
       throw { status: 401, message: "Username or Password incorrect" };
     }
 
-    // Set cookie
+    // Set cookie // open a session and save it in the wed 
     req.session.user_id = user.user_id;
     console.log("session user_id login: " + req.session.user_id);
 
