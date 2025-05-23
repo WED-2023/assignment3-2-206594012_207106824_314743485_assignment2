@@ -1,6 +1,7 @@
 const axios = require("axios");
 const api_domain = "https://api.spoonacular.com/recipes";
 
+console.log("🔐 API KEY used:", process.env.spooncular_apiKey);
 
 
 /**
@@ -18,6 +19,7 @@ async function getRecipeInformation(recipe_id) {
     });
 }
 
+//need to add also ingerdients, instructuons ...
 async function getRecipeDetails(recipe_id) {
     let recipe_info = await getRecipeInformation(recipe_id);
     let { id, title, readyInMinutes, image, aggregateLikes, vegan, vegetarian, glutenFree } = recipe_info.data;
@@ -35,8 +37,21 @@ async function getRecipeDetails(recipe_id) {
     }
 }
 
+// Receiving preparation steps and required equipment
+async function getAnalyzedInstructions(recipeId) {
+  const response = await axios.get(`${api_domain}/${recipeId}/analyzedInstructions`, {
+    params: {
+      apiKey: process.env.spooncular_apiKey
+    }
+  });
+
+  // Returns all steps and required equipment
+  return response.data; // array of instruction blocks
+}
 
 
+
+exports.getAnalyzedInstructions = getAnalyzedInstructions;
 exports.getRecipeDetails = getRecipeDetails;
 
 

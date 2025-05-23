@@ -5,7 +5,7 @@ var path = require("path");
 var logger = require("morgan");
 const session = require("client-sessions");
 const DButils = require("./routes/utils/DButils");
-var cors = require('cors')
+const cors = require('cors')
 
 var app = express();
 app.use(logger("dev")); //logger
@@ -50,6 +50,14 @@ app.get("/",function(req,res)
 // app.use(cors(corsConfig));
 // app.options("*", cors(corsConfig));
 
+const corsOptions = {
+  origin: "http://localhost:3000", 
+  credentials: true
+};
+
+app.use(cors(corsOptions));
+
+
 var port = process.env.PORT || "3000"; //local=3000 remote=80
 //#endregion
 const user = require("./routes/user");
@@ -60,10 +68,10 @@ const auth = require("./routes/auth");
 //#region cookie middleware לבדוק אם מי שנרשם משתמש או לא
 app.use(function (req, res, next) {
   if (req.session && req.session.user_id) {
-    DButils.execQuery("SELECT user_id FROM users")
+    DButils.execQuery("SELECT username FROM users")
       .then((users) => {
-        if (users.find((x) => x.user_id === req.session.user_id)) {
-          req.user_id = req.session.user_id;
+        if (users.find((x) => x.username === req.session.username)) {
+          req.username = req.session.username;
         }
         next();
       })
