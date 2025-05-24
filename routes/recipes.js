@@ -1,3 +1,4 @@
+require("dotenv").config();
 var express = require("express");
 var router = express.Router();
 const DButils = require("./utils/DButils");
@@ -8,6 +9,30 @@ const user_utils = require("./utils/user_utils");
 
 router.get("/", (req, res) => res.send("im here"));
 
+/**
+ * This path returns 3 random recipes
+ */
+router.get("/random", async (req, res, next) => {
+  try {
+    let recipesDetailsArray = [];
+    while (recipesDetailsArray.length < 3) {
+      const recipes = await recipes_utils.getRandomRecipes(3 - recipesDetailsArray.length);
+      const recipeIds = recipes.map(recipe => String(recipe.id));
+      for (let recipeId of recipeIds) {
+        try {
+          const recipeDetails = await recipes_utils.getRecipeDetails(recipeId);
+          recipesDetailsArray.push(recipeDetails);
+        } catch (error) {
+          console.error(`Error fetching details for recipe ID ${recipeId}:`, error);
+        }
+        if (recipesDetailsArray.length === 3) break;
+      }
+    }
+    res.status(200).send(recipesDetailsArray);
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * This path returns a full details of a recipe by its id - missing instructuons, ingeredients, servings
@@ -148,6 +173,42 @@ router.get("/:recipeId/prepare", async (req, res, next) => {
   }
 });
 
+/**
+ * This path return the query search results 
+ */
+router.get("/search", async (req, res, next) => {
+  try {
+    const query  = req.query.query;
+    const cuisine = req.query.cuisine;
+    const diet = req.query.diet;
+    const intolerances = req.query.intolerances;
+    const number = req.query.number || 5;
+
+    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
+    res.send(results);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * This path returns a full recipe from Spoonacular by its ID
+ */
+router.get("/fullview/:recipeId", async (req, res, next) => {
+  try {
+    const recipeId = req.params.recipeId.trim();
+    const recipe = await recipes_utils.getFullRecipeFromSpoonacular(recipeId);
+    res.status(200).send(recipe);
+  } catch (error) {
+    next(error);
+  }
+});
 
 
-module.exports = router;
+
+
+
+
+
+
+module.exports = router;

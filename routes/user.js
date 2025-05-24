@@ -4,7 +4,7 @@ const DButils = require("./utils/DButils");
 const user_utils = require("./utils/user_utils");
 const recipe_utils = require("./utils/recipes_utils");
 
-console.log("🔑 Loaded API Key:", process.env.spooncular_apiKey);
+console.log("Loaded API Key:", process.env.spooncular_apiKey);
 
 
 /**
@@ -137,6 +137,7 @@ router.get("/my-recipes/:recipeId", async (req, res, next) => {
     next(error);
   }
 });
+
 
 /**
  * The path returns a full view of a user's family recipe by its recipeId 

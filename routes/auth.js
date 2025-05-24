@@ -42,7 +42,7 @@ router.post("/Register", async (req, res, next) => {
 
 router.post("/Login", async (req, res, next) => {
   try {
-    console.log("🔍 Login route called. Body:", req.body);  
+    console.log("Login route called. Body:", req.body);  
 
     // check that username exists
     const users = await DButils.execQuery("SELECT username FROM users");
@@ -81,4 +81,4 @@ router.post("/Logout", function (req, res) {
 module.exports = router;
 
 
-console.log("✅ auth.js loaded");
+console.log("auth.js loaded");
