@@ -52,6 +52,17 @@ async function getAnalyzedInstructions(recipeId) {
   return response.data; // array of instruction blocks
 }
 
+async function getNumberOfInstructionsFromSpoonacular(recipeId) {
+  const analyzedInstructions = await getAnalyzedInstructions(recipeId);
+
+  if (analyzedInstructions?.length > 0 && analyzedInstructions[0].steps?.length > 0) {
+    return analyzedInstructions[0].steps.length;
+  } else {
+    return 0;
+  }
+}
+
+
 
 async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
     // console.log("🍝 search params:", { recipeName, cuisine, diet, intolerance, number });
@@ -138,6 +149,7 @@ exports.getRecipeInformation = getRecipeInformation;
 exports.searchRecipe = searchRecipe;
 exports.getRandomRecipes = getRandomRecipes
 exports.getFullRecipeFromSpoonacular = getFullRecipeFromSpoonacular;
+exports.getNumberOfInstructionsFromSpoonacular = getNumberOfInstructionsFromSpoonacular;
 
 
 

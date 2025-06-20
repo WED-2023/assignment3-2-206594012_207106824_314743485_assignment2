@@ -1,4 +1,5 @@
 const DButils = require("./DButils");
+const recipes_utils = require("./recipes_utils"); 
 
 async function markAsFavorite(username, recipe_id){
     await DButils.execQuery(`insert into FavoriteRecipes values ('${username}',${recipe_id})`);
@@ -12,6 +13,40 @@ async function getFavoriteRecipes(username){
 function generatingRecipeId() {
   const randomNum = Math.floor(Math.random() * 100000); 
   return `RU${randomNum}`;
+}
+
+// Function for getting a preview recipe (of any recipe- personal or  Spoonacular)
+async function getPreviewForAnyRecipe(username, recipe_id) {
+  try {
+    // Check if it's a user/family recipe
+    if (recipe_id.startsWith("RU")) {
+      // Try personal 
+      let recipe = await getUserRecipeInformation(username, recipe_id);
+      if (!recipe || recipe.error) {
+        recipe = await getUserFamilyRecipeInformation(username, recipe_id);
+      }
+      if (recipe && !recipe.error) {
+        return {
+          id: recipe.recipeID,
+          title: recipe.title,
+          readyInMinutes: recipe.readyInMinutes,
+          image: recipe.image,
+          popularity: recipe.aggregateLikes,
+          vegan: recipe.vegan,
+          vegetarian: recipe.vegetarian,
+          glutenFree: recipe.glutenFree,
+        };
+      } else {
+        return null;
+      }
+    } else {
+      // External recipe from Spoonacular
+      return await recipes_utils.getRecipeDetails(recipe_id);
+    }
+  } catch (error) {
+    console.error("Error in getPreviewForAnyRecipe:", error);
+    return null;
+  }
 }
 
 
@@ -94,7 +129,24 @@ async function getUserRecipes(username) {
           // Handle the case where no recipes are found for the user
           return { error: 'No recipes found for this user.' };
       }
-      return recipes;
+      
+      const watchedRows = await DButils.execQuery(`
+      SELECT recipeID FROM WatchedRecipes WHERE username='${username}'
+      `);
+      const watchedSet = new Set(watchedRows.map(row => row.recipeID));
+
+      const favoriteRows = await DButils.execQuery(`
+      SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
+      `);
+      const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
+      
+      return recipes.map(recipe => ({
+      ...recipe,
+      isFamily: false,
+      isFavorite: favoriteSet.has(recipe.recipeID),
+      wasWatched: watchedSet.has(recipe.recipeID)
+    }));
+
   } catch (error) {
       console.error('Failed to retrieve recipes:', error);
       return { error: 'Failed to retrieve recipes.' };
@@ -128,6 +180,12 @@ async function getUserRecipeInformation(username, recipe_id) {
       recipe[0].ingredients = [];
       return { ...recipe[0], message: 'No ingredients found for this recipe.' };
     }
+
+    const favoriteRows = await DButils.execQuery(`
+      SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
+    `);
+    const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
+    reciprecipe[0].isFavorite = favoriteSet.has(recipe.recipeID);
 
     recipe[0].ingredients = ingredients;
     return recipe[0];
@@ -176,6 +234,12 @@ async function getUserFamilyRecipeInformation(username, recipe_id) {
       recipe.occasion = meta[0].occasion;
     }
 
+    const favoriteRows = await DButils.execQuery(`
+      SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
+    `);
+    const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
+    recipe.isFavorite = favoriteSet.has(recipe.recipeID);
+
     return recipe;
   } catch (error) {
     console.error('Failed to retrieve family recipe:', error);
@@ -201,7 +265,23 @@ async function getUserFamilyRecipes(username) {
         FROM UserRecipes 
         WHERE username='${username}' AND isFamily = true`);
   
-    return familyRecipes;
+    const watchedRows = await DButils.execQuery(`
+      SELECT recipeID FROM WatchedRecipes WHERE username='${username}'
+    `);
+    const watchedSet = new Set(watchedRows.map(row => row.recipeID));
+
+    const favoriteRows = await DButils.execQuery(`
+      SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
+    `);
+    const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
+
+    return recipes.map(recipe => ({
+      ...recipe,
+      isFamily: true,
+      isFavorite: favoriteSet.has(recipe.recipeID),
+      wasWatched: watchedSet.has(recipe.recipeID)
+    }));
+
   } catch (error) {
     console.error('Error retrieving family recipes', error);
     return { error: 'Error retrieving family recipes.' };
@@ -236,4 +316,5 @@ exports.getUserRecipeInformation = getUserRecipeInformation;
 exports.getUserFamilyRecipes = getUserFamilyRecipes;
 exports.createFamilyRecipe = createFamilyRecipe;
 exports.saveWatchedRecipeToDB = saveWatchedRecipeToDB;
-exports.getUserFamilyRecipeInformation = getUserFamilyRecipeInformation
+exports.getUserFamilyRecipeInformation = getUserFamilyRecipeInformation;
+exports.getPreviewForAnyRecipe = getPreviewForAnyRecipe;
