@@ -54,10 +54,7 @@ router.get("/:recipeId", async (req, res, next) => {
   }
 });
 
-<<<<<<< HEAD
 
-=======
->>>>>>> a780d8b640dc943bbcd90faae8d61a4b210c46b8
 
 router.get("/:recipeId/prepare", async (req, res, next) => {
   try {
