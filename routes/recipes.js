@@ -4,32 +4,84 @@ var router = express.Router();
 const DButils = require("./utils/DButils");
 const user_utils = require("./utils/user_utils");
 const recipes_utils = require("./utils/recipes_utils");
-const user_utils = require("./utils/user_utils");
 
 
 router.get("/", (req, res) => res.send("im here"));
+
+/**
+ * This path return the query search results 
+ */
+router.get("/search", async (req, res, next) => {
+  try {
+    console.log('=== DEBUG: /search route called ===');
+    const query  = req.query.query;
+    const cuisine = req.query.cuisine;
+    const diet = req.query.diet;
+    const intolerances = req.query.intolerances;
+    const number = req.query.number || 5;
+    
+    console.log('Search parameters:', { query, cuisine, diet, intolerances, number });
+
+    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
+    console.log(`Search returned ${results.length} results`);
+    res.send(results);
+  } catch (error) {
+    console.error('=== ERROR in /search route ===');
+    console.error('Error:', error);
+    next(error);
+  }
+});
 
 /**
  * This path returns 3 random recipes
  */
 router.get("/random", async (req, res, next) => {
   try {
+    console.log('=== DEBUG: /random route called ===');
     let recipesDetailsArray = [];
-    while (recipesDetailsArray.length < 3) {
+    let attempts = 0;
+    const maxAttempts = 5; // To prevent infinite loops
+
+    while (recipesDetailsArray.length < 3 && attempts < maxAttempts) {
+      attempts++;
+      console.log(`Attempt #${attempts} to fetch ${3 - recipesDetailsArray.length} random recipes...`);
       const recipes = await recipes_utils.getRandomRecipes(3 - recipesDetailsArray.length);
+      console.log('Random recipes received:', recipes?.length || 0);
+      
+      if (!recipes || recipes.length === 0) {
+        console.log('No recipes returned from getRandomRecipes. Trying again...');
+        continue;
+      }
+
       const recipeIds = recipes.map(recipe => String(recipe.id));
+      console.log('Recipe IDs:', recipeIds);
+      
       for (let recipeId of recipeIds) {
         try {
+          console.log(`Fetching details for recipe ID: ${recipeId}`);
           const recipeDetails = await recipes_utils.getRecipeDetails(recipeId);
-          recipesDetailsArray.push(recipeDetails);
+          if(recipeDetails.image) { // A simple validation to check if the recipe is valid
+            recipesDetailsArray.push(recipeDetails);
+            console.log(`Successfully added recipe: ${recipeDetails.title}`);
+          } else {
+            console.log(`Recipe ID ${recipeId} is missing details, skipping.`);
+          }
         } catch (error) {
-          console.error(`Error fetching details for recipe ID ${recipeId}:`, error);
+          console.error(`Error fetching details for recipe ID ${recipeId}:`, error.message);
         }
         if (recipesDetailsArray.length === 3) break;
       }
     }
+
+    if (recipesDetailsArray.length < 3) {
+      console.log(`Could not fetch 3 recipes after ${maxAttempts} attempts. Sending ${recipesDetailsArray.length} recipes.`);
+    }
+
+    console.log(`Sending ${recipesDetailsArray.length} recipes to frontend`);
     res.status(200).send(recipesDetailsArray);
   } catch (error) {
+    console.error('=== ERROR in /random route ===');
+    console.error('Error:', error);
     next(error);
   }
 });
@@ -94,24 +146,6 @@ router.get("/:recipeId/prepare", async (req, res, next) => {
 });
 
 /**
- * This path return the query search results 
- */
-router.get("/search", async (req, res, next) => {
-  try {
-    const query  = req.query.query;
-    const cuisine = req.query.cuisine;
-    const diet = req.query.diet;
-    const intolerances = req.query.intolerances;
-    const number = req.query.number || 5;
-
-    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
-    res.send(results);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
  * This path returns a full recipe from Spoonacular by its ID
  */
 router.get("/fullview/:recipeId", async (req, res, next) => {
@@ -126,4 +160,4 @@ router.get("/fullview/:recipeId", async (req, res, next) => {
 
 
 
-module.exports = router;
+module.exports = router;

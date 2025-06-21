@@ -51,14 +51,14 @@ app.get("/",function(req,res)
 // app.options("*", cors(corsConfig));
 
 const corsOptions = {
-  origin: "http://localhost:3000", 
+  origin: ["http://localhost:3000", "http://localhost:8082"], 
   credentials: true
 };
 
 app.use(cors(corsOptions));
 
 
-var port = process.env.PORT || "3000"; //local=3000 remote=80
+var port = process.env.PORT || "3001"; //local=3001 remote=80
 //#endregion
 const user = require("./routes/user");
 const recipes = require("./routes/recipes");
