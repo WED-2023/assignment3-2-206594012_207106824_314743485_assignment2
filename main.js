@@ -39,31 +39,12 @@ app.get("/",function(req,res)
 
 });
 
-// app.use(cors());
-// app.options("*", cors());
-
-// const corsConfig = {
-//   origin: true,
-//   credentials: true
-// };
-
-// app.use(cors(corsConfig));
-// app.options("*", cors(corsConfig));
-
-<<<<<<< HEAD
 const corsOptions = {
   origin: ["http://localhost:3000", "http://localhost:8082"], 
   credentials: true
 };
-=======
-// const corsOptions = {
-//   origin: "http://localhost:3000", 
-//   credentials: true
-// };
->>>>>>> 0f2316923d7a47be71db402e2f70557096759fd3
 
-// app.use(cors(corsOptions));
-
+app.use(cors(corsOptions));
 
 var port = process.env.PORT || "3001"; //local=3001 remote=80
 //#endregion
@@ -108,18 +89,15 @@ app.use(function (err, req, res, next) {
   res.status(err.status || 500).send({ message: err.message, success: false });
 });
 
+const server = app.listen(port, () => {
+  console.log(`Server listen on port ${port}`);
+});
 
-
-// const server = app.listen(port, () => {
-//   console.log(`Server listen on port ${port}`);
-// });
-
-// process.on("SIGINT", function () {
-//   if (server) {
-//     server.close(() => console.log("server closed"));
-//   }
-//   process.exit();
-// });
-
+process.on("SIGINT", function () {
+  if (server) {
+    server.close(() => console.log("server closed"));
+  }
+  process.exit();
+});
 
 module.exports = app;
