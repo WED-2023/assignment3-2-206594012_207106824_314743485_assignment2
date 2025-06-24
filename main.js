@@ -40,7 +40,7 @@ app.get("/",function(req,res)
 });
 
 const corsOptions = {
-  origin: ["http://localhost:3000", "http://localhost:8082"], 
+  origin: ["http://localhost:3000", "http://localhost:8082", "http://10.100.102.12:8082", "http://10.100.102.12:8083", "http://localhost:8083"], 
   credentials: true
 };
 
