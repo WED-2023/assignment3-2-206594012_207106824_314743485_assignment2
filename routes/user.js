@@ -217,9 +217,75 @@ router.get('/family-recipes', async (req, res, next) => {
 /**
  * The path returns the 3 last watched recipes by the user
  */
+// router.get("/recipes/watched", async (req, res, next) => {
+//   try {
+//     const username = req.session.username;
+//     const watchedRows = await DButils.execQuery(`
+//       SELECT recipeID
+//       FROM WatchedRecipes
+//       WHERE username = '${username}'
+//       ORDER BY watchedAt DESC
+//       LIMIT 3
+//     `);
+
+//     console.log("Raw watchedRows:", watchedRows);
+
+//     const recipeIds = watchedRows
+//       .map(row => row.recipeID?.toString().trim())
+//       .filter(id =>
+//         id &&
+//         id !== 'watched' &&
+//         id !== 'undefined' &&
+//         id !== 'null'
+//     );
+
+//     console.log("Filtered recipe IDs:", recipeIds);
+
+//     const favoriteRows = await DButils.execQuery(`
+//       SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
+//     `);
+//     const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
+
+//     const watchedRecipes = await Promise.all(recipeIds.map(async (id) => {
+//       try {
+//         // attempt from the User DB
+//         const userRecipe = await DButils.execQuery(`
+//           SELECT recipeID, title, readyInMinutes, image, aggregateLikes, vegan, vegetarian, glutenFree
+//           FROM UserRecipes
+//           WHERE recipeID = '${id}'
+//         `);
+//         if (userRecipe.length > 0) {
+//             return {
+//               ...userRecipe[0],
+//               wasWatched: true,
+//               isFavorite: favoriteSet.has(id)
+//           };
+//         }
+//         // attempt from spoonacular 
+//         const apiRecipe = await recipe_utils.getRecipeDetails(id);
+//         return {
+//           ...apiRecipe,
+//           wasWatched: true,
+//           isFavorite: favoriteSet.has(id)
+//         };
+//       } catch (e) {
+//         return null; 
+//       }
+//     }));
+
+//     // Filtering failed recipes
+//     const validRecipes = watchedRecipes.filter(Boolean);
+//     res.status(200).send(validRecipes);
+//   } catch (error) {
+//     next(error);
+//   }
+// });
+
 router.get("/recipes/watched", async (req, res, next) => {
   try {
     const username = req.session.username;
+
+    
     const watchedRows = await DButils.execQuery(`
       SELECT recipeID
       FROM WatchedRecipes
@@ -228,8 +294,6 @@ router.get("/recipes/watched", async (req, res, next) => {
       LIMIT 3
     `);
 
-    console.log("Raw watchedRows:", watchedRows);
-
     const recipeIds = watchedRows
       .map(row => row.recipeID?.toString().trim())
       .filter(id =>
@@ -237,49 +301,39 @@ router.get("/recipes/watched", async (req, res, next) => {
         id !== 'watched' &&
         id !== 'undefined' &&
         id !== 'null'
-    );
+      );
 
-    console.log("Filtered recipe IDs:", recipeIds);
-
+    
     const favoriteRows = await DButils.execQuery(`
       SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
     `);
     const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
 
+    
     const watchedRecipes = await Promise.all(recipeIds.map(async (id) => {
       try {
-        // attempt from the User DB
-        const userRecipe = await DButils.execQuery(`
-          SELECT recipeID, title, readyInMinutes, image, aggregateLikes, vegan, vegetarian, glutenFree
-          FROM UserRecipes
-          WHERE recipeID = '${id}'
-        `);
-        if (userRecipe.length > 0) {
-            return {
-              ...userRecipe[0],
-              wasWatched: true,
-              isFavorite: favoriteSet.has(id)
+        const preview = await user_utils.getPreviewForAnyRecipe(username, id);
+        if (preview) {
+          return {
+            ...preview,
+            wasWatched: true,
+            isFavorite: favoriteSet.has(id)
           };
         }
-        // attempt from spoonacular 
-        const apiRecipe = await recipe_utils.getRecipeDetails(id);
-        return {
-          ...apiRecipe,
-          wasWatched: true,
-          isFavorite: favoriteSet.has(id)
-        };
+        return null;
       } catch (e) {
-        return null; 
+        console.error("Failed to load preview for recipe:", id, e);
+        return null;
       }
     }));
 
-    // Filtering failed recipes
     const validRecipes = watchedRecipes.filter(Boolean);
     res.status(200).send(validRecipes);
   } catch (error) {
     next(error);
   }
 });
+
 
 /**
  * The path enables the user to mark in the recipe a preparation step as completed- both recipes from website or personal/family

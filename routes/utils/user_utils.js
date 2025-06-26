@@ -42,7 +42,7 @@ async function getPreviewForAnyRecipe(username, recipe_id) {
           vegan: recipe.vegan,
           vegetarian: recipe.vegetarian,
           glutenFree: recipe.glutenFree,
-          isFamily: recipe.isFamily === true || recipe.isFamily === 1
+          isFamily: recipe.isFamily === 1 || recipe.isFamily === true
         };
       } else {
         return null;
