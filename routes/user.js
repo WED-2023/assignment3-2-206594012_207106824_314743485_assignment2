@@ -30,8 +30,8 @@ router.use(async function (req, res, next) {
 router.post('/favorites', async (req,res,next) => {
   try{
     const username = req.session.username;
-    const recipe_id = req.body.recipeId;
-    await user_utils.markAsFavorite(username,recipe_id);
+    const recipeID = req.body.recipeID;
+    await user_utils.markAsFavorite(username,recipeID);
     res.status(200).send("The Recipe successfully saved as favorite");
     } catch(error){
     next(error);
@@ -90,10 +90,12 @@ router.post('/recipes', async (req, res, next) => {
   try {
     const username = req.session.username;
     const { 
-      title, image, readyInMinutes, aggregateLikes, vegan, vegetarian, glutenFree, 
+      title, image, readyInMinutes, vegan, vegetarian, glutenFree, 
       ingredients, instructions, instructionsSteps, servings, 
       isFamily, familyMember, occasion 
     } = req.body;
+
+    const aggregateLikes = 0; 
 
     // Validate inputs
     if (!title || !image || !readyInMinutes || instructions.length === 0 || instructionsSteps.length === 0 || !ingredients || !servings) {
@@ -193,7 +195,7 @@ router.get('/family-recipes', async (req, res, next) => {
     }
 
     const previews = familyRecipes.map((recipe) => ({
-      id: recipe.recipeID,
+      recipeID: recipe.recipeID,
       title: recipe.title,
       image: recipe.image,
       readyInMinutes: recipe.readyInMinutes,
@@ -226,7 +228,18 @@ router.get("/recipes/watched", async (req, res, next) => {
       LIMIT 3
     `);
 
-    const recipeIds = watchedRows.map(row => row.recipeID);
+    console.log("Raw watchedRows:", watchedRows);
+
+    const recipeIds = watchedRows
+      .map(row => row.recipeID?.toString().trim())
+      .filter(id =>
+        id &&
+        id !== 'watched' &&
+        id !== 'undefined' &&
+        id !== 'null'
+    );
+
+    console.log("Filtered recipe IDs:", recipeIds);
 
     const favoriteRows = await DButils.execQuery(`
       SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
@@ -306,7 +319,7 @@ router.get("/my-recipes/:recipeId/prepare", async (req, res, next) => {
     // saving the recipe in req.session.mealPlan
     if (!req.session.mealPlan) req.session.mealPlan = [];
 
-    const alreadyExists = req.session.mealPlan.find(r => r.recipeID === recipeId);
+    const alreadyExists = req.session.mealPlan.find(r => r.recipeID.toString() === recipeId.toString());
     if (!alreadyExists) {
       const newOrder = req.session.mealPlan.length + 1;
       req.session.mealPlan.push({ recipeID: recipeId, orderIndex: newOrder });
@@ -327,7 +340,38 @@ router.get("/my-recipes/:recipeId/prepare", async (req, res, next) => {
       return res.status(404).send({ message: "No preparation steps found for this recipe." });
     }
 
-    const parsedSteps = steps.map(step => JSON.parse(step.instructionJson));
+    const parsedSteps = steps.map(step => {
+      const parsed = JSON.parse(step.instructionJson);
+      return {
+        number: parsed.number || parsed.stepNumber || parsed.step || 1,  // מוודאים שיהיה מספר שלב
+        description: parsed.description || parsed.step || ""
+      };
+    });
+
+    // Load ingredients for this recipe
+    const ingredients = await DButils.execQuery(`
+      SELECT ingredientName, amount, unit 
+      FROM extendedIngredients 
+      WHERE recipeID = '${recipeId}'
+    `);
+
+    const parsedIngredients = ingredients.map(ing => ({
+      name: ing.ingredientName,
+      amount: ing.amount,
+      unit: ing.unit
+    }));
+
+    // Load servings and title (from UserRecipes)
+    const recipe = await DButils.execQuery(`
+      SELECT servings, title 
+      FROM UserRecipes 
+      WHERE recipeID = '${recipeId}' 
+      AND username = '${username}'
+    `);
+
+    if (recipe.length === 0) {
+      return res.status(404).send({ message: "Recipe not found." });
+    }
 
     // Initialize the session object for tracking step progress, if needed
     if (!req.session.preparationProgress) {
@@ -341,7 +385,10 @@ router.get("/my-recipes/:recipeId/prepare", async (req, res, next) => {
 
     res.status(200).send({
       instructions: parsedSteps,
-      progress: req.session.preparationProgress[recipeId]
+      progress: req.session.preparationProgress[recipeId],
+      ingredients: parsedIngredients,
+      servings: recipe[0].servings,
+      title: recipe[0].title
     });
   } catch (error) {
     next(error);
@@ -359,7 +406,7 @@ router.get("/family-recipes/:recipeId/prepare", async (req, res, next) => {
     // saving the recipe in req.session.mealPlan
     if (!req.session.mealPlan) req.session.mealPlan = [];
 
-    const alreadyExists = req.session.mealPlan.find(r => r.recipeID === recipeId);
+    const alreadyExists = req.session.mealPlan.find(r => r.recipeID.toString() === recipeId.toString());
     if (!alreadyExists) {
       const newOrder = req.session.mealPlan.length + 1;
       req.session.mealPlan.push({ recipeID: recipeId, orderIndex: newOrder });
@@ -380,7 +427,36 @@ router.get("/family-recipes/:recipeId/prepare", async (req, res, next) => {
       return res.status(404).send({ message: "No preparation steps found for this family recipe." });
     }
 
-    const parsedSteps = steps.map(step => JSON.parse(step.instructionJson));
+    const parsedSteps = steps.map(step => {
+      const parsed = JSON.parse(step.instructionJson);
+      return {
+        number: parsed.number || parsed.stepNumber || parsed.step || 1,
+        description: parsed.description || parsed.step || ""
+      };
+    });
+
+    // Load ingredients
+    const ingredients = await DButils.execQuery(`
+      SELECT ingredientName, amount, unit 
+      FROM extendedIngredients 
+      WHERE recipeID = '${recipeId}'
+    `);
+    const parsedIngredients = ingredients.map(ing => ({
+      name: ing.ingredientName,
+      amount: ing.amount,
+      unit: ing.unit
+    }));
+
+    // Load title + servings
+    const recipeRows = await DButils.execQuery(`
+      SELECT servings, title 
+      FROM UserRecipes 
+      WHERE recipeID = '${recipeId}' AND username = '${username}'
+    `);
+
+    if (recipeRows.length === 0) {
+      return res.status(404).send({ message: "Recipe not found." });
+    }
 
     // Initialize the session object for preparation progress tracking
     if (!req.session.preparationProgress) {
@@ -397,7 +473,10 @@ router.get("/family-recipes/:recipeId/prepare", async (req, res, next) => {
     // Send both the instructions and the current progress status
     res.status(200).send({
       instructions: parsedSteps,
-      progress: req.session.preparationProgress[recipeId]
+      progress: req.session.preparationProgress[recipeId],
+      ingredients: parsedIngredients,
+      servings: recipeRows[0].servings,
+      title: recipeRows[0].title
     });
 
   } catch (error) {
@@ -407,7 +486,7 @@ router.get("/family-recipes/:recipeId/prepare", async (req, res, next) => {
 
 
 /**
- * Get the user's current meal plan
+ * Get the user's current meal plan (fully improved version with step count)
  */
 router.get("/meal-plan", async (req, res) => {
   if (!req.session.username) {
@@ -417,73 +496,79 @@ router.get("/meal-plan", async (req, res) => {
   const mealPlan = req.session.mealPlan || [];
   const username = req.session.username;
 
-  // If meal plan empty - return early
   if (mealPlan.length === 0) {
     return res.send([]);
   }
 
-  // We will enrich each recipe in meal plan:
   const enrichedMealPlan = await Promise.all(
     mealPlan.map(async (item) => {
-      let recipeType = '';
-      let recipeTitle = '';
-      let totalSteps = 0;
-
       try {
-        // Detect if this is personal / family / spoonacular:
-        if (item.recipeID.startsWith("RU")) {
-          // Personal or Family recipe (let's query UserRecipes table)
-          const recipeRows = await DButils.execQuery(`
-            SELECT title, isFamily FROM UserRecipes 
-            WHERE recipeID = '${item.recipeID}' AND username = '${username}'
-          `);
+        const recipeIDStr = (item.recipeID || item.recipeId).toString();
 
-          if (recipeRows.length > 0) {
-            recipeTitle = recipeRows[0].title;
-            recipeType = recipeRows[0].isFamily ? 'family' : 'personal';
-
-            // Count total steps from RecipeInstructions table:
-            const stepsRows = await DButils.execQuery(`
-              SELECT COUNT(*) as stepCount FROM RecipeInstructions 
-              WHERE recipeID = '${item.recipeID}' AND username = '${username}'
-            `);
-            totalSteps = stepsRows[0].stepCount;
-
-          } else {
-            recipeTitle = "Unknown User Recipe";
-            recipeType = "unknown";
-          }
-        } else {
-          // Spoonacular recipe
-          const recipeDetails = await recipes_utils.getRecipeDetails(item.recipeID);
-          recipeTitle = recipeDetails.title;
-          recipeType = "spoonacular";
-          totalSteps = await recipes_utils.getNumberOfInstructionsFromSpoonacular(item.recipeID);
+        const preview = await user_utils.getPreviewForAnyRecipe(username, recipeIDStr);
+        if (!preview) {
+          return {
+            recipeID: recipeIDStr,
+            orderIndex: item.orderIndex,
+            title: "Unknown Recipe",
+            image: "",
+            readyInMinutes: 0,
+            vegan: false,
+            vegetarian: false,
+            glutenFree: false,
+            popularity: 0,
+            totalSteps: 0,
+            progress: { completedSteps: [] }
+          };
         }
 
+        let totalSteps = 0;
+        if (recipeIDStr.startsWith("RU")) {
+          // personal/family recipe
+          const stepsRows = await DButils.execQuery(`
+            SELECT COUNT(*) as stepCount FROM RecipeInstructions 
+            WHERE recipeID = '${recipeIDStr}' AND username = '${username}'
+          `);
+          totalSteps = stepsRows[0].stepCount;
+        } else {
+          // Spoonacular recipe
+          totalSteps = await recipe_utils.getNumberOfInstructionsFromSpoonacular(recipeIDStr);
+        }
+
+        return {
+          recipeID: recipeIDStr,
+          orderIndex: item.orderIndex,
+          title: preview.title,
+          image: preview.image,
+          readyInMinutes: preview.readyInMinutes,
+          vegan: preview.vegan,
+          vegetarian: preview.vegetarian,
+          glutenFree: preview.glutenFree,
+          popularity: preview.popularity, 
+          totalSteps: totalSteps,
+          progress: req.session.preparationProgress?.[recipeIDStr] || { completedSteps: [] }
+        };
       } catch (error) {
         console.error(`Error enriching recipe ${item.recipeID}:`, error);
-        recipeTitle = "Unknown Recipe";
-        recipeType = "unknown";
+        return {
+          recipeID:  (item.recipeID || item.recipeId).toString(),
+          orderIndex: item.orderIndex,
+          title: "Unknown Recipe",
+          image: "",
+          readyInMinutes: 0,
+          vegan: false,
+          vegetarian: false,
+          glutenFree: false,
+          popularity: 0,
+          totalSteps: 0,
+          progress: { completedSteps: [] }
+        };
       }
-
-      // Get progress from session (if exists)
-      const progress = req.session.preparationProgress?.[item.recipeID] || { completedSteps: [], instructions: [] };
-
-      return {
-        recipeID: item.recipeID,
-        orderIndex: item.orderIndex,
-        recipeTitle,
-        recipeType,
-        progress
-      };
     })
   );
 
   res.send(enrichedMealPlan);
 });
-
-
 
 /**
  * Add a recipe to the user's meal plan
@@ -497,8 +582,8 @@ router.post("/meal-plan", (req, res) => {
   if (!req.session.mealPlan) req.session.mealPlan = [];
 
   // check if already existed
-  if (req.session.mealPlan.find(r => r.recipeID === recipeID)) {
-    return res.status(400).send({ message: "Already in meal plan" });
+  if (req.session.mealPlan.find(r => r.recipeID.toString() === recipeID.toString())) {
+    return res.status(200).send({ message: "Already in meal plan" });
   }
 
   // To number the next recipe that enters the meal
@@ -513,23 +598,33 @@ router.post("/meal-plan", (req, res) => {
  * Update the order of a recipe in the meal plan
  */
 router.patch("/meal-plan/:recipeID", (req, res) => {
+  console.log("Received PATCH request to /meal-plan/:recipeID");
+
   if (!req.session.username) {
+    console.log("No username in session");
     return res.status(401).send({ message: "Unauthorized - not logged in" });
   }
 
   const recipeID = req.params.recipeID;
   const { orderIndex } = req.body;
 
+  console.log("Requested recipeID:", recipeID);
+  console.log("New orderIndex:", orderIndex);
+
   if (!req.session.mealPlan) {
+    console.log("No meal plan found in session");
     return res.status(400).send({ message: "Meal plan is empty" });
   }
 
   // Sort by existing order
   let sortedPlan = [...req.session.mealPlan].sort((a, b) => a.orderIndex - b.orderIndex);
+  console.log("Current sorted meal plan:", sortedPlan);
+
 
   // Find the recipe and remove it from its current index
-  const itemIndex = sortedPlan.findIndex(r => r.recipeID === recipeID);
+  const itemIndex = sortedPlan.findIndex(r => r.recipeID == recipeID);
   if (itemIndex === -1) {
+    console.log("Recipe not found in meal plan:", recipeID);
     return res.status(404).send({ message: "Recipe not found in meal plan" });
   }
 

@@ -9,43 +9,90 @@ const recipes_utils = require("./utils/recipes_utils");
 router.get("/", (req, res) => res.send("im here"));
 
 /**
- * This path returns 3 random recipes
+ * This path return the query search results 
  */
-router.get("/random", async (req, res, next) => {
+router.get("/search", async (req, res, next) => {
   try {
-    let recipesDetailsArray = [];
-    while (recipesDetailsArray.length < 3) {
-      const recipes = await recipes_utils.getRandomRecipes(3 - recipesDetailsArray.length);
-      const recipeIds = recipes.map(recipe => String(recipe.id));
-      for (let recipeId of recipeIds) {
-        try {
-          const recipeDetails = await recipes_utils.getRecipeDetails(recipeId);
-          recipesDetailsArray.push(recipeDetails);
-        } catch (error) {
-          console.error(`Error fetching details for recipe ID ${recipeId}:`, error);
-        }
-        if (recipesDetailsArray.length === 3) break;
-      }
-    }
-    res.status(200).send(recipesDetailsArray);
+    console.log('=== DEBUG: /search route called ===');
+    const query  = req.query.query;
+    const cuisine = req.query.cuisine;
+    const diet = req.query.diet;
+    const intolerances = req.query.intolerances;
+    const number = req.query.number || 5;
+    
+    console.log('Search parameters:', { query, cuisine, diet, intolerances, number });
+
+    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
+    console.log(`Search returned ${results.length} results`);
+    res.send(results);
   } catch (error) {
+    console.error('=== ERROR in /search route ===');
+    console.error('Error:', error);
     next(error);
   }
 });
 
 /**
- * This path returns a full details of a recipe by its id - preview presentation
+ * This path returns 3 random recipes
+ */
+router.get("/random", async (req, res, next) => {
+  try {
+    console.log('=== DEBUG: /random route called ===');
+    let recipesDetailsArray = [];
+    let attempts = 0;
+    const maxAttempts = 5; // To prevent infinite loops
+
+    while (recipesDetailsArray.length < 3 && attempts < maxAttempts) {
+      attempts++;
+      console.log(`Attempt #${attempts} to fetch ${3 - recipesDetailsArray.length} random recipes...`);
+      const recipes = await recipes_utils.getRandomRecipes(3 - recipesDetailsArray.length);
+      console.log('Random recipes received:', recipes?.length || 0);
+      
+      if (!recipes || recipes.length === 0) {
+        console.log('No recipes returned from getRandomRecipes. Trying again...');
+        continue;
+      }
+
+      const recipeIds = recipes.map(recipe => String(recipe.id));
+      console.log('Recipe IDs:', recipeIds);
+      
+      for (let recipeId of recipeIds) {
+        try {
+          console.log(`Fetching details for recipe ID: ${recipeId}`);
+          const recipeDetails = await recipes_utils.getRecipeDetails(recipeId);
+          if(recipeDetails.image) { // A simple validation to check if the recipe is valid
+            recipesDetailsArray.push(recipeDetails);
+            console.log(`Successfully added recipe: ${recipeDetails.title}`);
+          } else {
+            console.log(`Recipe ID ${recipeId} is missing details, skipping.`);
+          }
+        } catch (error) {
+          console.error(`Error fetching details for recipe ID ${recipeId}:`, error.message);
+        }
+        if (recipesDetailsArray.length === 3) break;
+      }
+    }
+
+    if (recipesDetailsArray.length < 3) {
+      console.log(`Could not fetch 3 recipes after ${maxAttempts} attempts. Sending ${recipesDetailsArray.length} recipes.`);
+    }
+
+    console.log(`Sending ${recipesDetailsArray.length} recipes to frontend`);
+    res.status(200).send(recipesDetailsArray);
+  } catch (error) {
+    console.error('=== ERROR in /random route ===');
+    console.error('Error:', error);
+    next(error);
+  }
+});
+
+/**
+ * This path returns details of a recipe by its id - preview presentation
  */
 router.get("/:recipeId", async (req, res, next) => {
   try {
     const recipeId = req.params.recipeId;
     const recipe = await recipes_utils.getRecipeDetails(recipeId);
-
-    //add the recipeId for last watched
-    const username = req.session.username;
-    if (username) {
-      await user_utils.saveWatchedRecipeToDB(username, recipeId);
-    }
 
     res.send(recipe);
   } catch (error) {
@@ -68,7 +115,12 @@ router.get("/:recipeId/prepare", async (req, res, next) => {
     }
 
     // Fetch step-by-step preparation instructions from the external Spoonacular API 
-    const instructions = await recipes_utils.getAnalyzedInstructions(recipeId);
+    const instructionsRaw = await recipes_utils.getAnalyzedInstructions(recipeId);
+    const instructions = recipes_utils.flattenAnalyzedInstructions(instructionsRaw);
+
+
+    const recipeFull = await recipes_utils.getFullRecipeFromSpoonacular(recipeId);
+    const ingredients = recipeFull.ingredients;
 
     // Initialize session object for tracking preparation progress, if not already initialized
     if (!req.session.preparationProgress) {
@@ -85,6 +137,9 @@ router.get("/:recipeId/prepare", async (req, res, next) => {
     //Send both the instructions and the current progress status back to the frontend
     res.status(200).send({
       instructions: instructions,
+      ingredients: ingredients,
+      servings: recipeFull.servings,
+      title: recipeFull.title,
       progress: req.session.preparationProgress[recipeId]
     });
   } catch (error) {
@@ -93,30 +148,19 @@ router.get("/:recipeId/prepare", async (req, res, next) => {
 });
 
 /**
- * This path return the query search results 
- */
-router.get("/search", async (req, res, next) => {
-  try {
-    const query  = req.query.query;
-    const cuisine = req.query.cuisine;
-    const diet = req.query.diet;
-    const intolerances = req.query.intolerances;
-    const number = req.query.number || 5;
-
-    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
-    res.send(results);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
  * This path returns a full recipe from Spoonacular by its ID
  */
-router.get("/fullview/:recipeId", async (req, res, next) => {
+router.get("/fullview/:recipeID", async (req, res, next) => {
   try {
-    const recipeId = req.params.recipeId.trim();
-    const recipe = await recipes_utils.getFullRecipeFromSpoonacular(recipeId);
+    const recipeID = req.params.recipeID.trim();
+    const recipe = await recipes_utils.getFullRecipeFromSpoonacular(recipeID);
+
+    //add the recipeId for last watched
+    const username = req.session.username;
+    if (username) {
+      await user_utils.saveWatchedRecipeToDB(username, recipeID);
+    }
+
     res.status(200).send(recipe);
   } catch (error) {
     next(error);
@@ -124,4 +168,4 @@ router.get("/fullview/:recipeId", async (req, res, next) => {
 });
 
 
-module.exports = router;
+module.exports = router;

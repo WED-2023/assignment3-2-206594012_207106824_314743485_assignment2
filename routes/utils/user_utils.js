@@ -1,8 +1,9 @@
 const DButils = require("./DButils");
 const recipes_utils = require("./recipes_utils"); 
 
-async function markAsFavorite(username, recipe_id){
-    await DButils.execQuery(`insert into FavoriteRecipes values ('${username}',${recipe_id})`);
+
+async function markAsFavorite(username, recipeID){
+  await DButils.execQuery(`INSERT INTO FavoriteRecipes (username, recipe_id) VALUES ('${username}', '${recipeID}')`);
 }
 
 async function getFavoriteRecipes(username){
@@ -18,36 +19,55 @@ function generatingRecipeId() {
 // Function for getting a preview recipe (of any recipe- personal or  Spoonacular)
 async function getPreviewForAnyRecipe(username, recipe_id) {
   try {
-    // Check if it's a user/family recipe
-    if (recipe_id.startsWith("RU")) {
-      // Try personal 
-      let recipe = await getUserRecipeInformation(username, recipe_id);
+    if (!recipe_id) {
+      console.error("getPreviewForAnyRecipe called with undefined recipe_id!");
+      return null;
+    }
+    const recipeIDStr = recipe_id.toString();  
+    console.log("Trying to get preview for recipeID:", recipeIDStr);
+
+    
+    if (recipeIDStr.startsWith("RU")) {
+      let recipe = await getUserRecipeInformation(username, recipeIDStr);
       if (!recipe || recipe.error) {
-        recipe = await getUserFamilyRecipeInformation(username, recipe_id);
+        recipe = await getUserFamilyRecipeInformation(username, recipeIDStr);
       }
       if (recipe && !recipe.error) {
         return {
-          id: recipe.recipeID,
+          recipeID: recipe.recipeID,
           title: recipe.title,
           readyInMinutes: recipe.readyInMinutes,
           image: recipe.image,
-          popularity: recipe.aggregateLikes,
+          popularity: recipe.aggregateLikes || 0,
           vegan: recipe.vegan,
           vegetarian: recipe.vegetarian,
           glutenFree: recipe.glutenFree,
+          isFamily: recipe.isFamily === true || recipe.isFamily === 1
         };
       } else {
         return null;
       }
     } else {
-      // External recipe from Spoonacular
-      return await recipes_utils.getRecipeDetails(recipe_id);
+      console.log("Calling Spoonacular API for external recipe...");
+      const details = await recipes_utils.getRecipeDetails(recipeIDStr);
+      console.log("Received from Spoonacular:", details);
+      return {
+        recipeID: details.recipeID, 
+        title: details.title,
+        readyInMinutes: details.readyInMinutes,
+        image: details.image,
+        popularity: details.aggregateLikes,
+        vegan: details.vegan,
+        vegetarian: details.vegetarian,
+        glutenFree: details.glutenFree,
+      };
     }
   } catch (error) {
     console.error("Error in getPreviewForAnyRecipe:", error);
     return null;
   }
 }
+
 
 
 // Function for creating a new recipe
@@ -70,9 +90,16 @@ async function createRecipe(username, title, readyInMinutes, image ,instructions
     // Save instructions
   for (let i = 0; i < instructionsSteps.length; i++) {
     const step = instructionsSteps[i];
+    const stepNumber = step.number || step.stepNumber || (i+1);
+    const description = step.description || step.step;
+    
+    const transformedStep = {
+      number: stepNumber,
+      description: description
+    };
     await DButils.execQuery(`
       INSERT INTO RecipeInstructions (recipeID, username, stepIndex, instructionJson)
-      VALUES ('${recipeID}', '${username}', ${i}, '${JSON.stringify(step)}')
+      VALUES ('${recipeID}', '${username}', ${i}, '${JSON.stringify(transformedStep)}')
     `);
   }
   
@@ -108,9 +135,16 @@ async function createFamilyRecipe(username, title, readyInMinutes, image, instru
 
   for (let i = 0; i < instructionsSteps.length; i++) {
     const step = instructionsSteps[i];
+    const stepNumber = step.number || step.stepNumber || (i+1);
+    const description = step.description || step.step;
+    
+    const transformedStep = {
+      number: stepNumber,
+      description: description
+    };
     await DButils.execQuery(`
       INSERT INTO RecipeInstructions (recipeID, username, stepIndex, instructionJson)
-      VALUES ('${recipeID}', '${username}', ${i}, '${JSON.stringify(step)}')
+      VALUES ('${recipeID}', '${username}', ${i}, '${JSON.stringify(transformedStep)}')
     `);
   }
 
@@ -159,7 +193,8 @@ async function getUserRecipeInformation(username, recipe_id) {
     const recipe = await DButils.execQuery(`
       SELECT * FROM UserRecipes 
       WHERE username='${username}' 
-      AND recipeID ='${recipe_id}'` 
+      AND recipeID ='${recipe_id}'
+      AND isFamily = false` 
     );
 
     console.log("Recipe details from DB:", recipe);
@@ -176,18 +211,13 @@ async function getUserRecipeInformation(username, recipe_id) {
 
     console.log("Ingredients details from DB:", ingredients);
 
-    if (ingredients.length === 0) {
-      recipe[0].ingredients = [];
-      return { ...recipe[0], message: 'No ingredients found for this recipe.' };
-    }
-
     const favoriteRows = await DButils.execQuery(`
       SELECT recipe_id FROM FavoriteRecipes WHERE username='${username}'
     `);
     const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
-    reciprecipe[0].isFavorite = favoriteSet.has(recipe.recipeID);
+    recipe[0].isFavorite = favoriteSet.has(recipe[0].recipeID);
 
-    recipe[0].ingredients = ingredients;
+    recipe[0].ingredients = ingredients.length === 0 ? [] : ingredients;
     return recipe[0];
   } catch (error) {
     console.error('Failed to retrieve recipe information:', error);
@@ -219,7 +249,7 @@ async function getUserFamilyRecipeInformation(username, recipe_id) {
       WHERE recipeID ='${recipe_id}'`
     );
 
-    recipe.ingredients = ingredients;
+    recipe.ingredients = ingredients.length === 0 ? [] : ingredients;
 
     // Retrieving family information
     const meta = await DButils.execQuery(`
@@ -275,7 +305,7 @@ async function getUserFamilyRecipes(username) {
     `);
     const favoriteSet = new Set(favoriteRows.map(row => row.recipe_id));
 
-    return recipes.map(recipe => ({
+    return familyRecipes.map(recipe => ({
       ...recipe,
       isFamily: true,
       isFavorite: favoriteSet.has(recipe.recipeID),

@@ -3,26 +3,49 @@ require("dotenv").config();
 var express = require("express");
 var path = require("path");
 var logger = require("morgan");
-const session = require("client-sessions");
+// const session = require("client-sessions");
+const session = require("express-session");
+
 const DButils = require("./routes/utils/DButils");
 const cors = require('cors')
 
 var app = express();
+
+const corsOptions = {
+  origin: ["http://localhost:8082"], 
+  credentials: true
+};
+app.use(cors(corsOptions));
+
+
 app.use(logger("dev")); //logger
 app.use(express.json()); // parse application/json
-app.use(
-  session({
-    cookieName: "session", // the cookie key name
-    //secret: process.env.COOKIE_SECRET, // the encryption key
-    secret: "template", // the encryption key
-    duration: 24 * 60 * 60 * 1000, // expired after 20 sec
-    activeDuration: 1000 * 60 * 5, // if expiresIn < activeDuration,
-    cookie: {
-      httpOnly: false,
-    }
-    //the session will be extended by activeDuration milliseconds
-  })
-);
+// app.use(
+//   session({
+//     cookieName: "session", // the cookie key name
+//     //secret: process.env.COOKIE_SECRET, // the encryption key
+//     secret: "template", // the encryption key
+//     duration: 24 * 60 * 60 * 1000, // expired after 20 sec
+//     activeDuration: 1000 * 60 * 5, // if expiresIn < activeDuration,
+//     cookie: {
+//       httpOnly: false,
+//     }
+//     //the session will be extended by activeDuration milliseconds
+//   })
+// );
+
+app.use(session({
+  name: 'session',
+  secret: 'template',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: false,      
+    sameSite: 'lax'      
+  }
+}));
+
 app.use(express.urlencoded({ extended: false })); // parse application/x-www-form-urlencoded
 app.use(express.static(path.join(__dirname, "public"))); //To serve static files such as images, CSS files, and JavaScript files
 //local:
@@ -39,26 +62,10 @@ app.get("/",function(req,res)
 
 });
 
-// app.use(cors());
-// app.options("*", cors());
-
-// const corsConfig = {
-//   origin: true,
-//   credentials: true
-// };
-
-// app.use(cors(corsConfig));
-// app.options("*", cors(corsConfig));
-
-// const corsOptions = {
-//   origin: "http://localhost:3000", 
-//   credentials: true
-// };
-
-// app.use(cors(corsOptions));
 
 
-var port = process.env.PORT || "3000"; //local=3000 remote=80
+
+var port = process.env.PORT || "3001"; //local=3001 remote=80
 //#endregion
 const user = require("./routes/user");
 const recipes = require("./routes/recipes");
@@ -67,7 +74,7 @@ const auth = require("./routes/auth");
 
 //#region cookie middleware לבדוק אם מי שנרשם משתמש או לא
 app.use(function (req, res, next) {
-  if (req.session && req.session.user_id) {
+  if (req.session && req.session.username) {
     DButils.execQuery("SELECT username FROM users")
       .then((users) => {
         if (users.find((x) => x.username === req.session.username)) {
@@ -86,12 +93,9 @@ app.use(function (req, res, next) {
 app.get("/alive", (req, res) => res.send("I'm alive"));
 
 // Routings
-app.use("/users", user);
+app.use("/user", user);
 app.use("/recipes", recipes);
 app.use("/", auth);
-
-
-
 
 
 
@@ -100,8 +104,6 @@ app.use(function (err, req, res, next) {
   console.error(err);
   res.status(err.status || 500).send({ message: err.message, success: false });
 });
-
-
 
 const server = app.listen(port, () => {
   console.log(`Server listen on port ${port}`);
@@ -113,6 +115,5 @@ process.on("SIGINT", function () {
   }
   process.exit();
 });
-
 
 module.exports = app;

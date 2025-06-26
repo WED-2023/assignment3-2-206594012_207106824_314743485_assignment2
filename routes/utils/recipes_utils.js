@@ -14,12 +14,19 @@ console.log("API KEY used:", process.env.spooncular_apiKey);
 
 
 async function getRecipeInformation(recipe_id) {
-    return await axios.get(`${api_domain}/${recipe_id}/information`, {
+    console.log('=== DEBUG: getRecipeInformation called ===');
+    console.log('Recipe ID:', recipe_id);
+    console.log('URL being called:', `${api_domain}/${recipe_id}/information`);
+    
+    const response = await axios.get(`${api_domain}/${recipe_id}/information`, {
         params: {
             includeNutrition: false,
             apiKey: process.env.spooncular_apiKey
         }
     });
+    
+    console.log('Recipe information received successfully');
+    return response;
 }
 
 
@@ -28,7 +35,7 @@ async function getRecipeDetails(recipe_id) {
     let { id, title, readyInMinutes, image, aggregateLikes, vegan, vegetarian, glutenFree } = recipe_info.data;
 
     return {
-        id: id,
+        recipeID: id.toString(),
         title: title,
         readyInMinutes: readyInMinutes,
         image: image,
@@ -52,6 +59,7 @@ async function getAnalyzedInstructions(recipeId) {
   return response.data; // array of instruction blocks
 }
 
+
 async function getNumberOfInstructionsFromSpoonacular(recipeId) {
   const analyzedInstructions = await getAnalyzedInstructions(recipeId);
 
@@ -62,6 +70,21 @@ async function getNumberOfInstructionsFromSpoonacular(recipeId) {
   }
 }
 
+function flattenAnalyzedInstructions(analyzedInstructions) {
+  const steps = [];
+
+  analyzedInstructions.forEach(block => {
+    block.steps.forEach(step => {
+      steps.push({
+        number: step.number,
+        description: step.step
+      });
+    });
+  });
+
+  return steps;
+}
+
 
 
 async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
@@ -69,10 +92,10 @@ async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
     // console.log("🔑 API Key:", api_key);
     const response = await axios.get(`${api_domain}/complexSearch`, {
         params: {
-            query: query,
+            query: recipeName,
             cuisine: cuisine,
             diet: diet,
-            intolerances: intolerances,
+            intolerances: intolerance,
             number: number,
             apiKey: process.env.spooncular_apiKey
         }
@@ -95,15 +118,31 @@ async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
  */
 async function getRandomRecipes(number = 3) {
   try {
-    const response = await axios.get(`${api_domain}/random`, {
-      params: {
-        apiKey: process.env.spooncular_apiKey,
-        number: number
-      }
-    });
+    console.log('=== DEBUG: getRandomRecipes called ===');
+    console.log('API Key:', process.env.spooncular_apiKey);
+    console.log('Number of recipes requested:', number);
+    
+    const url = `${api_domain}/random`;
+    const params = {
+      apiKey: process.env.spooncular_apiKey,
+      number: number
+    };
+    
+    console.log('URL being called:', url);
+    console.log('Parameters:', params);
+    
+    const response = await axios.get(url, { params });
+    
+    console.log('Response received successfully');
+    console.log('Number of recipes returned:', response.data.recipes?.length || 0);
+    
     return response.data.recipes;
   } catch (error) {
-    console.error('Error fetching random recipes:', error);
+    console.error('=== ERROR in getRandomRecipes ===');
+    console.error('Error message:', error.message);
+    console.error('Error response:', error.response?.data);
+    console.error('Error status:', error.response?.status);
+    console.error('Full error:', error);
     throw error;
   }
 }
@@ -119,7 +158,7 @@ async function getFullRecipeFromSpoonacular(recipe_id) {
   const data = response.data;
 
   return {
-    id: data.id,
+    recipeID: data.id,
     title: data.title,
     readyInMinutes: data.readyInMinutes,
     image: data.image,
@@ -150,6 +189,7 @@ exports.searchRecipe = searchRecipe;
 exports.getRandomRecipes = getRandomRecipes
 exports.getFullRecipeFromSpoonacular = getFullRecipeFromSpoonacular;
 exports.getNumberOfInstructionsFromSpoonacular = getNumberOfInstructionsFromSpoonacular;
+exports.flattenAnalyzedInstructions = flattenAnalyzedInstructions;
 
 
 
