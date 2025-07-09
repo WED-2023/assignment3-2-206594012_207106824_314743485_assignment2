@@ -26,6 +26,12 @@ async function getPreviewForAnyRecipe(username, recipe_id) {
     const recipeIDStr = recipe_id.toString();  
     console.log("Trying to get preview for recipeID:", recipeIDStr);
 
+    const watchedRows = await DButils.execQuery(`
+      SELECT 1 FROM WatchedRecipes 
+      WHERE username = '${username}' AND recipeID = '${recipeIDStr}'
+      LIMIT 1
+    `);
+    const wasWatched = watchedRows.length > 0;
     
     if (recipeIDStr.startsWith("RU")) {
       let recipe = await getUserRecipeInformation(username, recipeIDStr);
@@ -42,7 +48,8 @@ async function getPreviewForAnyRecipe(username, recipe_id) {
           vegan: recipe.vegan,
           vegetarian: recipe.vegetarian,
           glutenFree: recipe.glutenFree,
-          isFamily: recipe.isFamily === 1 || recipe.isFamily === true
+          isFamily: recipe.isFamily === 1 || recipe.isFamily === true,
+          wasWatched
         };
       } else {
         return null;
@@ -60,6 +67,7 @@ async function getPreviewForAnyRecipe(username, recipe_id) {
         vegan: details.vegan,
         vegetarian: details.vegetarian,
         glutenFree: details.glutenFree,
+        wasWatched
       };
     }
   } catch (error) {

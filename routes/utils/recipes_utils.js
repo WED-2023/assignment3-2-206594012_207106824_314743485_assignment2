@@ -1,5 +1,7 @@
 require("dotenv").config();
 const axios = require("axios");
+const DButils = require("./DButils");
+
 const api_domain = "https://api.spoonacular.com/recipes";
 
 
@@ -87,7 +89,7 @@ function flattenAnalyzedInstructions(analyzedInstructions) {
 
 
 
-async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
+async function searchRecipe(recipeName, cuisine, diet, intolerance, number, username = "") {
     // console.log("🍝 search params:", { recipeName, cuisine, diet, intolerance, number });
     // console.log("🔑 API Key:", api_key);
     const response = await axios.get(`${api_domain}/complexSearch`, {
@@ -105,10 +107,32 @@ async function searchRecipe(recipeName, cuisine, diet, intolerance, number) {
         return []; 
     }
     // Use Promise.all to fetch details for each recipe ID
-    const recipeDetails = await Promise.all(response.data.results.map(element => getRecipeDetails(String(element.id))));
+    const recipeDetails = await Promise.all(
+      response.data.results.map(async element => {
+        const details = await getRecipeDetails(String(element.id));
+
+        let wasWatched = false;
+        if (username) {
+          const recipeIDStr = details.recipeID.toString(); 
+          const watchedRows = await DButils.execQuery(`
+            SELECT 1 FROM WatchedRecipes 
+            WHERE username = '${username}' AND recipeID = '${recipeIDStr}'
+            LIMIT 1
+          `);
+          wasWatched = watchedRows.length > 0;
+        }
+
+        console.log(`Recipe: ${details.title} (ID: ${details.recipeID}) → wasWatched=${wasWatched}`);
+
+        return {
+          ...details,
+          wasWatched
+        };
+      })
+    );
+
     return recipeDetails;
 
-    //return getRecipeDetails(response.data.results.map((element) => element.recipe_id));
 }
 
 

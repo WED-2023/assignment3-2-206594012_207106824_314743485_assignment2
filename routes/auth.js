@@ -77,6 +77,9 @@ router.post("/Login", async (req, res, next) => {
     req.session.username = user.username;
     console.log("session user_id login: " + req.session.username);
 
+    req.session.mealPlan = [];
+    req.session.preparationProgress = {};
+
 
     // return cookie
     res.status(200).send({ message: "login succeeded " , success: true });
@@ -96,6 +99,8 @@ router.get('/session', (req, res) => {
 
 router.post("/Logout", function (req, res) {
   console.log("session username Logout: " + req.session.username);
+  req.session.mealPlan = [];
+  req.session.preparationProgress = {};
   req.session.destroy(err => {
     if (err) {
       console.error("Failed to destroy session:", err);

@@ -22,7 +22,8 @@ router.get("/search", async (req, res, next) => {
     
     console.log('Search parameters:', { query, cuisine, diet, intolerances, number });
 
-    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number);
+    const username = req.session?.username || "";
+    const results = await recipes_utils.searchRecipe(query, cuisine, diet, intolerances, number, username);
     console.log(`Search returned ${results.length} results`);
     res.send(results);
   } catch (error) {
@@ -41,6 +42,7 @@ router.get("/random", async (req, res, next) => {
     let recipesDetailsArray = [];
     let attempts = 0;
     const maxAttempts = 5; // To prevent infinite loops
+    // const username = req.session?.username || null;
 
     while (recipesDetailsArray.length < 3 && attempts < maxAttempts) {
       attempts++;
@@ -60,6 +62,19 @@ router.get("/random", async (req, res, next) => {
         try {
           console.log(`Fetching details for recipe ID: ${recipeId}`);
           const recipeDetails = await recipes_utils.getRecipeDetails(recipeId);
+          
+          const username = req.session?.username;
+          let wasWatched = false;
+          if (username) {
+            const watchedRows = await DButils.execQuery(`
+              SELECT 1 FROM WatchedRecipes 
+              WHERE username = '${username}' AND recipeID = '${recipeDetails.recipeID}'
+              LIMIT 1
+            `);
+            wasWatched = watchedRows.length > 0;
+          }
+          recipeDetails.wasWatched = wasWatched;
+
           if(recipeDetails.image) { // A simple validation to check if the recipe is valid
             recipesDetailsArray.push(recipeDetails);
             console.log(`Successfully added recipe: ${recipeDetails.title}`);
